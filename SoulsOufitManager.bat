@@ -1,2 +1,2 @@
-py SoulsOufitManager.py
+python SoulsOufitManager.py
 pause
