@@ -5,162 +5,16 @@ import os
 import json
 import shutil
 import time
-import pymem
-
-class ChecklistBox(tk.Frame):
-    def __init__(self, parent, **kwargs):
-        tk.Frame.__init__(self, parent, **kwargs)
-
-    def setItems(choices):
-        for child in self.winfo_children():
-            child.destroy()
-        
-        self.vars = []
-        bg = self.cget("background")
-
-        for choice in choices:
-            var = tk.StringVar(value=choice)
-            self.vars.append(var)
-            cb = tk.Checkbutton(self, var=var, text=choice,
-                onvalue=choice, offvalue="",
-                anchor="w", width=20, background=bg,
-                elief="flat", highlightthickness=0)
-            cb.pack(side="top", fill="x", anchor="w")
-
-    def getCheckedItems(self):
-        values = []
-        for var in self.vars:
-            value =  var.get()
-            if value:
-                values.append(value)
-        return values
-
-class DS3ModelMaskPatcher:
-    """Patches Params in DARK SOULS III's memory for part model masks"""
-
-    def __init__(self):
-        self.__pyMem = pymem.Pymem()
-        self.__paramOffset = None
-        self.__paramTable = {}
-
-    def __accessMultilevelPointer(self, cTypeName, offsets):
-        if len(offsets) == 0:
-            return None
-        
-        baseAddress = offsets[0]
-        address = None
-
-        if len(offsets) == 1:
-            if cTypeName == 'int8':
-                try:
-                    return self.__pyMem.read_bytes(baseAddress, 1)[0]
-                except MemoryReadError as error:
-                    return None
-            elif cTypeName == 'int16':
-                try:
-                    return self.__pyMem.read_short(baseAddress)
-                except MemoryReadError as error:
-                    return None
-            elif cTypeName == 'int32':
-                try:
-                    return self.__pyMem.read_int(baseAddress)
-                except MemoryReadError as error:
-                    return None
-            elif cTypeName == 'uint64':
-                try:
-                    return self.__pyMem.read_ulonglong(baseAddress)
-                except MemoryReadError as error:
-                    return None
-            elif cTypeName == 'float':
-                try:
-                    return self.__pyMem.read_float(baseAddress)
-                except MemoryReadError as error:
-                    return None
-
-        
-        try:
-            address = self.__pyMem.read_ulonglong(baseAddress)
-        except pymem.exception.MemoryReadError as error:
-            return None
-
-        offsets.pop(0)
-        offset = offsets[0]
-        offsets[0] = address + offset
-        return self.__accessMultilevelPointer(cTypeName, offsets)
-
-    def __loadEquipParamProtector(self):
-        self.__paramOffset = self.__accessMultilevelPointer('uint64',
-            [0x144782838, 0xB8, 0x68, 0x68])
-        tableSize = self.__accessMultilevelPointer('int16',
-            [self.__paramOffset + 0xA])
-
-        for i in range(tableSize):
-            paramId = self.__accessMultilevelPointer('uint64',
-                [self.__paramOffset + 0x40 + 0x18 * i])
-            idOffset = self.__accessMultilevelPointer('uint64',
-                [self.__paramOffset + 0x48 + 0x18 * i])
-            self.__paramTable[paramId] = self.__paramOffset + idOffset
-
-    def getParamIdByEquipModelId(self, equipModelId):
-        if len(equipModelId.split('_')) != 2:
-            return None
-
-        bodyPart = equipModelId.split('_')[0]
-        modelId = int(equipModelId.split('_')[1])
-        equipModelCategory = None
-        
-        if bodyPart == 'HD':
-            equipModelCategory = 5
-        elif bodyPart == 'BD':
-            equipModelCategory = 2
-        elif bodyPart == 'AM':
-            equipModelCategory = 1
-        elif bodyPart == 'LG':
-            equipModelCategory = 6
-        else:
-            return None
-
-        for paramId in self.__paramTable:
-            try:
-                if self.__pyMem.read_bytes(self.__paramTable[paramId] + 0xD0, 1)[0] == equipModelCategory and modelId == self.__pyMem.read_ushort(self.__paramTable[paramId] + 0xA0):
-                    return paramId
-            except pymem.exception.MemoryReadError as error:
-               continue
-        
-        return None
-
-    def readModelMask(self, id, maskOffset):
-        try:
-            return self.__pyMem.read_bytes(self.__paramTable[id] + 0x12E + maskOffset, 1)[0]
-        except pymem.exception.MemoryReadError as error:
-            return None
-
-    def writeModelMask(self, id, maskOffset, isHide):
-        try:
-           self.__pyMem.writes_bytes(self.__paramTable[id] + 0x12E + maskOffset, [isHide], 1)
-        except pymem.exception.MemoryReadError as error:
-            return
-
-    def isAttached(self):
-        try:
-            self.__pyMem.base_address()
-            return True
-        except pymem.exception.ProcessError as error:
-            return False
-
-    def attach(self):
-        try:
-            self.__pyMem.open_process_from_name('DarkSoulsIII')
-        except pymem.exception.ProcessNotFound as error:
-            return
-        except pymem.exception.CouldNotOpenProcess as error:
-            return
-
-        self.__loadEquipParamProtector()
-        print(self.readModelMask(self.getParamIdByEquipModelId('HD_2950'), 31))
+from ChecklistBox import ScrollableChecklist
+from DS3ModelMaskPatcher import DS3ModelMaskPatcher
+from DS3PartInfo import DS3PartInfo
+from DS3PartUtil import DS3PartUtil
+from DS3PartUtil import EquipModelCategory
+from DS3PartUtil import EquipModelGender
+from DS3PartListbox import DS3PartListbox
 
 class SoulsOutfitManager:
-    """Main class of SoulsOufitManager"""
+    """Main class of SoulsOutfitManager"""
 
     supportedGameEXENames = [
         'DarkSoulsIII.exe',
@@ -175,12 +29,12 @@ class SoulsOutfitManager:
     modsDirectory = 'mods'
 
     def __init__(self):
+        self.__ds3PartUtil = None
         self.__window = None
         self.__gameDirectory = ''
-        self.__moddedPartFiles = []
-        self.__gamePartFiles = {}
-        self.__replacedPartFiles = {}
-        self.__partNames = {}
+        self.__moddedParts = []
+        self.__gameParts = {}
+        self.__replacedParts = {}
         self.__widgets = {}
         self.__selectedModdedPart = None
 
@@ -189,56 +43,12 @@ class SoulsOutfitManager:
 
     def __selectModdedPart(self, __selectedModdedPart):
         self.__selectedModdedPart = __selectedModdedPart
-
-    def __getPartNameFromPartFileName(self, partFileName):
-        name = 'Unknown'
-
-        if len(partFileName.split('.')) == 0:
-            return name
-
-        partNameSections = partFileName.split('.')[0].split('_')
-
-        for partNameKey in self.__partNames:
-            if len(partNameKey.split('.')) == 0:
-                continue
-
-            itrPartNameSections = partNameKey.split('.')[0].split('_')
-
-            if len(partNameSections) >= 3 and len(itrPartNameSections) == 2 and itrPartNameSections[0].lower() == partNameSections[0].lower() and itrPartNameSections[1] == partNameSections[2]:
-                name = self.__partNames[partNameKey]
-
-                if partNameSections[1] == 'm':
-                    name += ' [Male]'
-                elif partNameSections[1] == 'f':
-                    name += ' [Female]'
-
-                if len(partNameSections) == 4 and partNameSections[3] == 'l':
-                    name += ' [Lower Detail]'
-        
-        return name
     
-    def __getPartFileNameFromPartName(self, directory, partName):
-        if os.path.isdir(directory):
-            for entry in os.scandir(directory):
-                if not entry.is_file() or len(os.path.splitext(entry.name)) != 2 or not os.path.splitext(entry.name)[1] == '.dcx':
-                    continue
-            
-                otherPartName = self.__getPartNameFromPartFileName(entry.name)
+    def __getModelMaskPresetFile(self, part):
+        return part.getEquipModelCategory() + '_' + str(part.getEquipModelId()) + '.modelmaskpreset.json'
 
-                if partName == otherPartName:
-                    return entry.name
-                    break
-        
-        return None
-
-    def __loadPartNames(self):
-        try:
-            self.__partNames = json.load(open(SoulsOutfitManager.assetsDirectory + os.path.sep + SoulsOutfitManager.partNamesFileName))
-        except FileNotFoundError as error:
-            print(error)
-            messagebox.showerror('SoulsOutfitManager Python Error', str(error) 
-                + "\n\nPlease assure you don't move SoulsOufitManager outside the same folder where \"assets\" is contained.")
-            exit()
+    def __loadDS3PartUtil(self):
+        self.__ds3PartUtil = DS3PartUtil(SoulsOutfitManager.assetsDirectory + os.path.sep + SoulsOutfitManager.partNamesFileName)
 
     def __initUI(self):
         self.__window = tk.Tk()
@@ -255,7 +65,7 @@ class SoulsOutfitManager:
             width=8,
             height=1,
             relief=tk.RAISED,
-            command=SoulsOutfitManager.openBrowseMenu)
+            command=SoulsOutfitManager.openBrowseForGameDirectory)
         self.__widgets['game_dir_browse_button'].grid(
             row=0, 
             column=0,
@@ -297,7 +107,7 @@ class SoulsOutfitManager:
             pady=0)
         self.__widgets['modded_part_list_search_box'].bind('<KeyRelease>',
             SoulsOutfitManager.moddedPartsSearchUpdate)
-        self.__widgets['modded_part_list'] = tk.Listbox(
+        self.__widgets['modded_part_list'] = DS3PartListbox(
             self.__window,
             bg='#333333',
             fg='#c3c3c3',
@@ -337,7 +147,7 @@ class SoulsOutfitManager:
             pady=0)
         self.__widgets['game_part_list_search_box'].bind('<KeyRelease>',
             SoulsOutfitManager.gamePartsSearchUpdate)
-        self.__widgets['game_part_list'] = tk.Listbox(
+        self.__widgets['game_part_list'] = DS3PartListbox(
             self.__window,
             bg='#333333',
             fg='#c3c3c3',
@@ -379,7 +189,7 @@ class SoulsOutfitManager:
             pady=0)
         self.__widgets['replaced_part_list_search_box'].bind('<KeyRelease>',
             SoulsOutfitManager.replacedPartsSearchUpdate)
-        self.__widgets['replaced_part_list'] = tk.Listbox(
+        self.__widgets['replaced_part_list'] = DS3PartListbox(
             self.__window,
             bg='#333333',
             fg='#c3c3c3',
@@ -392,9 +202,9 @@ class SoulsOutfitManager:
             column=2,
             padx=5,
             pady=5)
-        self.__widgets['replaced_part_list'].bind('<Double-Button-1>',
-            SoulsOutfitManager.replacedPartDoubleClickEvent)
-        self.__widgets['replaced_part_list'].bind('<Button-1>',
+        self.__widgets['replaced_part_list'].bind('<BackSpace>',
+            SoulsOutfitManager.tryRestorePart)
+        self.__widgets['replaced_part_list'].bind('<<ListboxSelect>>',
             SoulsOutfitManager.tryOpenModelMaskEditor)
         self.__widgets['refresh_button'] = tk.Button(
             self.__window,
@@ -425,7 +235,7 @@ class SoulsOutfitManager:
             column=3,
             padx=5,
             pady=5)
-        self.__widgets['model_mask_editor'] = ChecklistBox(
+        self.__widgets['model_mask_editor'] = ScrollableChecklist(
             self.__window,
             bg='#333333',
             width=150,
@@ -456,9 +266,9 @@ class SoulsOutfitManager:
         json.dump(programData, open(SoulsOutfitManager.programDataFileName, 'w'))
 
     def __loadPartLists(self):
-        self.__moddedPartFiles = []
-        self.__gamePartFiles = {}
-        self.__replacedPartFiles = {}
+        self.__moddedParts = []
+        self.__gameParts = []
+        self.__replacedParts = []
         gameDirectory = soulsOutfitManager_global.getWidgets()['game_dir_entry'].get()
 
         if os.path.isdir(gameDirectory) and os.path.isdir(gameDirectory + os.path.sep + 'parts'):
@@ -468,75 +278,59 @@ class SoulsOutfitManager:
                 if not entry.is_file() or len(os.path.splitext(entry.name)) != 2:
                     continue
                 elif os.path.splitext(entry.name)[1] == '.dcx':
-                    self.__gamePartFiles[entry.name] = self.__getPartNameFromPartFileName(entry.name)
+                    self.__gameParts.append(DS3PartInfo(self.__ds3PartUtil, partsDir, entry.name))
                 elif os.path.splitext(entry.name)[1] == '.sombak':
-                    self.__replacedPartFiles[entry.name] = self.__getPartNameFromPartFileName(entry.name)
+                    self.__replacedParts.append(DS3PartInfo(self.__ds3PartUtil, partsDir, entry.name))
 
         if os.path.isdir(SoulsOutfitManager.modsDirectory):
             for entry in os.scandir(SoulsOutfitManager.modsDirectory):
                 if not entry.is_file() or len(os.path.splitext(entry.name)) != 2 or not os.path.splitext(entry.name)[1] == '.dcx':
                     continue
-                self.__moddedPartFiles.append(entry.name)
+                self.__moddedParts.append(DS3PartInfo(self.__ds3PartUtil, SoulsOutfitManager.modsDirectory, entry.name))
 
-    def __updateModdedPartList(self):
+    def __updateUIModdedPartList(self):
         self.__widgets['modded_part_list'].delete(0, self.__widgets['modded_part_list'].size())
-        searchTerm = soulsOutfitManager_global.__widgets['modded_part_list_search_box'].get()
+        searchTerm = self.__widgets['modded_part_list_search_box'].get()
 
-        for moddedPartFile in self.__moddedPartFiles:
-            fullName = os.path.splitext(moddedPartFile)[0]
+        for moddedPart in self.__moddedParts:
+            partFile = os.path.splitext(moddedPart.getPartFile())[0]
             
-            if searchTerm == '' or searchTerm.lower() in fullName.lower():
-                self.__widgets['modded_part_list'].insert(0, fullName)
+            if searchTerm == '' or searchTerm.lower() in partFile.lower():
+                self.__widgets['modded_part_list'].insert(0, partFile, moddedPart)
 
-    def __updateGamePartList(self):
+    def __updateUIGamePartList(self):
         self.__widgets['game_part_list'].delete(0, self.__widgets['game_part_list'].size())
-        searchTerm = soulsOutfitManager_global.__widgets['game_part_list_search_box'].get()
+        searchTerm = self.__widgets['game_part_list_search_box'].get()
+        replacedPartFiles = []
 
-        for gamePartFile in self.__gamePartFiles:
-            partName = self.__gamePartFiles[gamePartFile]
+        for replacedPart in self.__replacedParts:
+            replacedPartFiles.append(replacedPart.getPartFile())
+
+        for gamePart in self.__gameParts:
+            if gamePart.getPartFile() in replacedPartFiles:
+                continue
+
+            partName = gamePart.getPartName()
 
             if partName != 'Unknown' and (searchTerm == '' or searchTerm.lower() in partName.lower()):
-                self.__widgets['game_part_list'].insert(0, partName)
+                self.__widgets['game_part_list'].insert(0, partName, gamePart)
 
-    def __updateReplacedPartList(self):
+    def __updateUIReplacedPartList(self):
         self.__widgets['replaced_part_list'].delete(0, self.__widgets['replaced_part_list'].size())
         searchTerm = soulsOutfitManager_global.__widgets['replaced_part_list_search_box'].get()
 
-        for replacedPartFile in self.__replacedPartFiles:
-            partName = self.__replacedPartFiles[replacedPartFile]
+        for replacedPart in self.__replacedParts:
+            partName = replacedPart.getPartName()
 
             if partName != 'Unknown' and (searchTerm == '' or searchTerm.lower() in partName.lower()):
-                self.__widgets['replaced_part_list'].insert(0, partName)
+                self.__widgets['replaced_part_list'].insert(0, partName, replacedPart)
                 
     def __replaceGamePart(self, moddedPart, gamePart):
         gameDirectory = soulsOutfitManager_global.__widgets['game_dir_entry'].get()
-        gamePartFileName = None
-        moddedPartFileName = None
+        moddedPartPath = moddedPart.getDirectory() + os.path.sep + moddedPart.getPartFile()
+        gamePartPath = gamePart.getDirectory() + os.path.sep + gamePart.getPartFile()
 
-        if os.path.isdir(gameDirectory) and os.path.isdir(gameDirectory + os.path.sep + 'parts'):
-            partsDir = gameDirectory + os.path.sep + 'parts'
-
-            for entry in os.scandir(partsDir):
-                if not entry.is_file() or len(os.path.splitext(entry.name)) != 2 or not os.path.splitext(entry.name)[1] == '.dcx':
-                    continue
-                partName = self.__getPartNameFromPartFileName(entry.name)
-
-                if partName == gamePart:
-                    gamePartFileName = entry.name
-                    break
-        
-        if os.path.isdir(SoulsOutfitManager.modsDirectory):
-            for entry in os.scandir(SoulsOutfitManager.modsDirectory):
-                if not entry.is_file() or len(os.path.splitext(entry.name)) != 2 or not os.path.splitext(entry.name)[1] == '.dcx':
-                    continue
-                print(moddedPart)
-                partName = os.path.splitext(entry.name)[0]
-
-                if partName == moddedPart:
-                    moddedPartFileName = entry.name
-                    break
-
-        if moddedPartFileName == None:
+        if not os.path.isfile(moddedPartPath):
             messagebox.showerror('SoulsOutfitManager Python Error',
                 'Unable to replace game part with modded part: \n\n'
                 + 'File \"'
@@ -545,7 +339,7 @@ class SoulsOutfitManager:
                 + 'You may have deleted or moved the file. Please refresh.')
             return
 
-        if gamePartFileName == None:
+        if not os.path.isfile(gamePartPath):
             messagebox.showerror('SoulsOutfitManager Python Error',
                 'Unable to replace game part with modded part: \n\n'
                 + 'File \"'
@@ -554,193 +348,184 @@ class SoulsOutfitManager:
                 + 'You may have deleted or moved the file. Please refresh.')
             return
         
-        if os.path.isdir(gameDirectory) and os.path.isdir(gameDirectory + os.path.sep + 'parts'):
-            partsDirectory = gameDirectory + os.path.sep + 'parts' + os.path.sep
-
-            try:
-                if not os.path.isfile(partsDirectory + os.path.sep + gamePartFileName + '.sombak'):
-                    shutil.copyfile(partsDirectory + os.path.sep + gamePartFileName,
-                        partsDirectory + os.path.sep + gamePartFileName + '.sombak')
+        try:
+            shutil.copyfile(gamePartPath,
+                gamePartPath + '.sombak')
                     
-                shutil.copyfile(SoulsOutfitManager.modsDirectory + os.path.sep + moddedPartFileName,
-                    partsDirectory + os.path.sep + gamePartFileName)
-            except FileNotFoundError as error:
-                print(error)
-                messagebox.showerror('SoulsOutfitManager Python Error',
+            shutil.copyfile(moddedPartPath,
+                gamePartPath)
+        except FileNotFoundError as error:
+            print(error)
+            messagebox.showerror('SoulsOutfitManager Python Error',
                 str(error)
                 + '\n\nUnable to replace game part with modded part. \n\n'
                 + 'You may have deleted or moved the files. Please refresh.')
-                return
-            self.__loadPartLists()
-            self.__updateModdedPartList()
-            self.__updateGamePartList()
-            self.__updateReplacedPartList()
+            return
+            
+        self.__loadPartLists()
+        self.__updateUIModdedPartList()
+        self.__updateUIGamePartList()
+        self.__updateUIReplacedPartList()
 
     def __deleteGamePart(self, gamePart):
         gameDirectory = soulsOutfitManager_global.__widgets['game_dir_entry'].get()
-        gamePartFileName = None
+        gamePartPath = gamePart.getDirectory() + os.path.sep + gamePart.getPartFile()
 
-        if os.path.isdir(gameDirectory) and os.path.isdir(gameDirectory + os.path.sep + 'parts'):
-            partsDir = gameDirectory + os.path.sep + 'parts'
+        if not os.path.isfile(gamePartPath):
+            messagebox.showerror('SoulsOutfitManager Python Error',
+                + 'Unable to delete game part. \n\n'
+                + 'You may have deleted or moved the file. Please refresh.')
+            return
+        
+        try:
+            if not os.path.isfile(gamePartPath + '.sombak'):
+                os.rename(gamePartPath,
+                    gamePartPath + '.sombak')
+        except FileNotFoundError as error:
+            print(error)
+            messagebox.showerror('SoulsOutfitManager Python Error',
+                str(error)
+                + '\n\nUnable to delete game part. \n\n'
+                + 'You may have deleted or moved the file. Please refresh.')
+            return
 
-            for entry in os.scandir(partsDir):
-                if not entry.is_file() or len(os.path.splitext(entry.name)) != 2 or not os.path.splitext(entry.name)[1] == '.dcx':
-                    continue
-                partName = self.__getPartNameFromPartFileName(entry.name)
-
-                if partName == gamePart:
-                    gamePartFileName = entry.name
-                    break
-            
-            if gamePartFileName == None:
-                messagebox.showerror('SoulsOutfitManager Python Error',
-                    + 'Unable to delete game part. \n\n'
-                    + 'You may have deleted or moved the file. Please refresh.')
-                return
-
-            try:
-                if not os.path.isfile(partsDir + os.path.sep + gamePartFileName + '.sombak'):
-                    os.rename(partsDir + os.path.sep + gamePartFileName,
-                        partsDir + os.path.sep + gamePartFileName + '.sombak')
-            except FileNotFoundError as error:
-                print(error)
-                messagebox.showerror('SoulsOutfitManager Python Error',
-                    str(error)
-                    + '\n\nUnable to delete game part. \n\n'
-                    + 'You may have deleted or moved the file. Please refresh.')
-                return
-
-            self.__loadPartLists()
-            self.__updateModdedPartList()
-            self.__updateGamePartList()
-            self.__updateReplacedPartList()
+        self.__loadPartLists()
+        self.__updateUIModdedPartList()
+        self.__updateUIGamePartList()
+        self.__updateUIReplacedPartList()
 
     def __restoreReplacedPart(self, replacedPart):
         gameDirectory = soulsOutfitManager_global.__widgets['game_dir_entry'].get()
-        replacedPartFileName = None
+        replacedPartBackupPath = replacedPart.getDirectory() + os.path.sep + replacedPart.getPartFile()
+        replacedPartPath = replacedPartBackupPath[:-7]
 
-        if os.path.isdir(gameDirectory) and os.path.isdir(gameDirectory + os.path.sep + 'parts'):
-            partsDir = gameDirectory + os.path.sep + 'parts'
-
-            for entry in os.scandir(partsDir):
-                if not entry.is_file() or len(os.path.splitext(entry.name)) != 2 or not os.path.splitext(entry.name)[1] == '.sombak':
-                    continue
-                partName = self.__getPartNameFromPartFileName(entry.name)
-
-                if partName == replacedPart:
-                    replacedPartFileName = entry.name
-                    break
-            
-            if replacedPartFileName == None:
-                messagebox.showerror('SoulsOutfitManager Python Error',
-                    'Unable to restore part. \n\n'
-                    + 'You may have deleted or moved the file. Please refresh.')
-                return
-
-            try:
-                if os.path.isfile(partsDir + os.path.sep + replacedPartFileName[:-6]):
-                    os.remove(partsDir + os.path.sep + replacedPartFileName[:-6])
-
-                os.rename(partsDir + os.path.sep + replacedPartFileName,
-                    partsDir + os.path.sep + replacedPartFileName[:-6])
-            except FileNotFoundError as error:
-                print(error)
-                messagebox.showerror('SoulsOutfitManager Python Error',
-                    str(error)
-                    + '\n\nUnable to restore part. \n\n'
-                    + 'You may have deleted or moved the file. Please refresh.')
-                return
-
-            self.__loadPartLists()
-            self.__updateModdedPartList()
-            self.__updateGamePartList()
-            self.__updateReplacedPartList()
-
-    def __applyModelMaskPresets():
-        if not os.path.isdir(SoulsOufitManager.modsDirectory):
+        if not os.path.isfile(replacedPartBackupPath):
+            messagebox.showerror('SoulsOutfitManager Python Error',
+                'Unable to restore part \"'
+                + replacedPart.getPartFile()
+                + '\"\n\nYou may have deleted or moved the file. Please refresh.')
             return
 
-        for entry in os.scandir(partsDir):
+        try:
+            if os.path.isfile(replacedPartPath):
+                os.remove(replacedPartPath)
+
+            os.rename(replacedPartBackupPath,
+                replacedPartPath)
+        except FileNotFoundError as error:
+            print(error)
+            messagebox.showerror('SoulsOutfitManager Python Error',
+                'Unable to restore part \"'
+                + replacedPart.getPartFile()
+                + '\"\n\nYou may have deleted or moved the file. Please refresh.')
+            return
+
+        self.__loadPartLists()
+        self.__updateUIModdedPartList()
+        self.__updateUIGamePartList()
+        self.__updateUIReplacedPartList()
+
+    def __applyModelMaskPresets(self):
+        if not os.path.isdir(SoulsOutfitManager.modsDirectory):
+            return
+
+        for entry in os.scandir(SoulsOutfitManager.modsDirectory):
             if not entry.is_file() or len(os.path.splitext(entry.name)) != 2 or not os.path.splitext(entry.name)[1] == '.json':
                 continue
+
             fileBaseName = os.path.splitext(entry.name)[0]
 
             if not fileBaseName.endswith('.modelmaskpreset'):
                 continue
             
-            split = fileBaseName.split('_')
-            
+            split = fileBaseName.split('.')
+
             if not len(split) == 2:
                 continue
 
-            bodyPart = split[0]
-            modelId = int(split[1])
+            equipInfoSplit = split[0].split('_')
+            
+            if not len(equipInfoSplit) == 2:
+                continue
+
+            bodyPart = equipInfoSplit[0]
+            modelId = int(equipInfoSplit[1])
             preset = json.load(open(SoulsOutfitManager.modsDirectory + os.path.sep + entry.name))
 
             for offset in preset:
-                self.writeModelMask(self.getParamIdByEquipModelId(bodyPart + '_' + str(modelId)), offset, preset[offset]['hidden'])
+                paramId = modelMaskPatcher.getParamIdByEquipModelIdAndEquipModelCategory(modelId, bodyPart)
+                modelMaskPatcher.writeModelMask(paramId, int(offset), int(preset[offset]['hidden']))
     
-    def __createModelMaskPreset(self, equipModelId):
-        if not os.path.isdir(SoulsOufitManager.modsDirectory):
+    def __createModelMaskPreset(self, part):
+        if not os.path.isdir(SoulsOutfitManager.modsDirectory):
             return
 
         template = json.load(open(SoulsOutfitManager.assetsDirectory + os.path.sep + 'template.modelmaskpreset.json'))
         preset = {}
+        paramId = modelMaskPatcher.getParamIdByEquipModelIdAndEquipModelCategory(part.getEquipModelId(), part.getEquipModelCategory())
         
         for i in range(97):
             maskElement = { 'description' : '', 'hidden' : False }
             
-            if i in template:
-                maskElement['description'] = template[i]['description']
-           
-            self.readModelMask(self.getParamIdByEquipModelId(equipModelId), i)
-            preset[i] = maskElement
+            if str(i) in template:
+                maskElement['description'] = template[str(i)]['description']
 
-        json.dump(preset, open(SoulsOutfitManager.modsDirectory + os.path.sep + equipModelId + '.modelmaskpreset.json'), indent=2)
+            maskElement['hidden'] = modelMaskPatcher.readModelMask(paramId, i)
+            preset[str(i)] = maskElement
 
-    def __loadModelMaskPreset(self, equipModelId):
+        with open(SoulsOutfitManager.modsDirectory + os.path.sep + self.__getModelMaskPresetFile(part), 'w') as file:
+            json.dump(preset, file, ensure_ascii=False, indent=2)
 
-        presetFile = SoulsOufitManager.modsDirectory + os.path.sep + equipModelId + '.modelmaskpreset.json'
+    def __saveModelMaskPreset(self, part, items):
+        if not os.path.isdir(SoulsOutfitManager.modsDirectory):
+            return
 
-        if not os.path.isfile():
+        template = json.load(open(SoulsOutfitManager.assetsDirectory + os.path.sep + 'template.modelmaskpreset.json'))
+        preset = {}
+        paramId = modelMaskPatcher.getParamIdByEquipModelIdAndEquipModelCategory(part.getEquipModelId(), part.getEquipModelCategory())
+        
+        for i in range(97):
+            maskElement = { 'description' : '', 'hidden' : False }
+            
+            if str(i) in template:
+                maskElement['description'] = template[str(i)]['description']
+
+            if int(items[i]) == 1:
+                maskElement['hidden'] = True
+            else:
+                maskElement['hidden'] = False
+
+            preset[str(i)] = maskElement
+
+        with open(SoulsOutfitManager.modsDirectory + os.path.sep + self.__getModelMaskPresetFile(part), 'w') as file:
+            json.dump(preset, file, ensure_ascii=False, indent=2)
+
+    def __loadModelMaskPreset(self, part):
+        presetFile = SoulsOutfitManager.modsDirectory + os.path.sep + self.__getModelMaskPresetFile(part)
+
+        if not os.path.isfile(presetFile):
             return
         
         preset = json.load(open(presetFile))
         
         for i in preset:
-            setItems(choices)
+            if preset[str(i)]['description'] == '':
+                preset[str(i)]['description'] = str(i)
 
-    def __tryLoadModelMaskPreset(self, partName):
-        gameDirectory = self.__widgets['game_dir_entry'].get() + os.path.seperator + 'parts'
-        partFileName = self.__getPartFileNameFromPartName(gameDirectory, partName)
-        
-        if len(partName.split('.')) != 3 or len(partName.split('_')) != 2:
-            return
-        
-        equipModelId = partName.split('.')[0]
+            preset[str(i)]['description'] = 'Hide ' + preset[str(i)]['description']
 
-        if os.path.isfile(SoulsOutfitManager.modsDirectory + os.path.serperator + equpModelId + 'modelmaskpreset.json'):
-            self.__loadModelMaskPreset(equipModelId)
+        self.__widgets['model_mask_editor'].setItems(preset, SoulsOutfitManager.tryUpdateModelMaskPreset)
+
+    def __tryLoadModelMaskPreset(self, part):
+        if os.path.isfile(SoulsOutfitManager.modsDirectory 
+                + os.path.sep 
+                + self.__getModelMaskPresetFile(part)):
+            self.__loadModelMaskPreset(part)
         else:
-            self.__createModelMaskPreset(equipModelId)
-
-    def __tryRestorePart(self):
-        selection = self.__widgets['replaced_part_list'].curselection()
-        partName = None
-        
-        if len(selection) == 1:
-            partName = self.__widgets['replaced_part_list'].get(selection[0], None)
-
-        if partName != None:
-            result = messagebox.askokcancel('Restore this backup?',
-                'Are you sure you want to restore this part to it\'s original?'
-                + '\nAny file currently replacing it will be deleted.')
-            
-            if result:
-                self.__restoreReplacedPart(partName)
+            self.__createModelMaskPreset(part)
 
     def start(self):
-        self.__loadPartNames()
+        self.__loadDS3PartUtil()
         self.__initUI()
         programDataFile = self.__tryLoadProgramData()
 
@@ -749,9 +534,9 @@ class SoulsOutfitManager:
             self.__widgets['game_dir_entry'].delete(0, len(currentText))
             self.__widgets['game_dir_entry'].insert(0, programDataFile['gameDirectory'])
         self.__loadPartLists()
-        self.__updateModdedPartList()
-        self.__updateGamePartList()
-        self.__updateReplacedPartList()
+        self.__updateUIModdedPartList()
+        self.__updateUIGamePartList()
+        self.__updateUIReplacedPartList()
         self.__window.mainloop()
 
     def getWidgets(self):
@@ -760,81 +545,98 @@ class SoulsOutfitManager:
     @staticmethod
     def selectModdedPart(event):
         selection = soulsOutfitManager_global.getWidgets()['modded_part_list'].curselection()
-        partName = None
+        part = None
         
         if len(selection) == 1:
-            partName = soulsOutfitManager_global.getWidgets()['modded_part_list'].get(selection[0], None)
+            part = soulsOutfitManager_global.getWidgets()['modded_part_list'].getDS3PartInfo(selection[0])
 
-        if partName != None:
-            soulsOutfitManager_global.__selectModdedPart(partName)
+        if part != None:
+            soulsOutfitManager_global.__selectModdedPart(part)
     
-    @staticmethod
-    def selectPartForModelMaskEditing(event):
-        selection = soulsOutfitManager_global.getWidgets()['replace_part_list'].curselection()
-        partName = None
-        
-        if len(selection) == 1:
-            partName = soulsOutfitManager_global.getWidgets()['replace_part_list'].get(selection[0], None)
-
-        if partName != None:
-            
-
     @staticmethod
     def tryReplaceGamePart(event):
         selection = soulsOutfitManager_global.getWidgets()['game_part_list'].curselection()
-        partName = None
+        part = None
         
         if len(selection) == 1:
-            partName = soulsOutfitManager_global.getWidgets()['game_part_list'].get(selection[0], None)
+            part = soulsOutfitManager_global.getWidgets()['game_part_list'].getDS3PartInfo(selection[0])
 
-        if partName != None:
-            moddedPartName = soulsOutfitManager_global.__getSelectedModdedPart()
+        if part != None:
+            moddedPart = soulsOutfitManager_global.__getSelectedModdedPart()
             
-            if moddedPartName == None:
+            if moddedPart == None:
                 return
 
             result = messagebox.askokcancel('Replace game part with modded part?',
                 'Are you sure you want to replace \"' 
-                + str(partName) + '\" with \"' 
-                + str(moddedPartName) + '\"?'
+                + str(part.getPartName()) + '\" with \"' 
+                + str(moddedPart.getPartFile()) + '\"?'
                 + '\nA backup will be created for you.')
             
             if result:
-                soulsOutfitManager_global.__replaceGamePart(moddedPartName, partName)
+                soulsOutfitManager_global.__replaceGamePart(moddedPart, part)
 
     @staticmethod
     def tryDeleteGamePart(event):
         selection = soulsOutfitManager_global.getWidgets()['game_part_list'].curselection()
-        partName = None
+        part = None
         
         if len(selection) == 1:
-            partName = soulsOutfitManager_global.getWidgets()['game_part_list'].get(selection[0], None)
+            part = soulsOutfitManager_global.getWidgets()['game_part_list'].getDS3PartInfo(selection[0])
 
-        if partName != None:
+        if part != None:
             result = messagebox.askokcancel('Replace this game part with nothing?',
-                'Are you you want to replace this game part with nothing?'
+                'Are you you want to replace \"'
+                + part.getPartName()
+                + '\" with nothing?'
                 + '\nA backup will be created for you.')
             
             if result:
-                soulsOutfitManager_global.__deleteGamePart(partName)
+                soulsOutfitManager_global.__deleteGamePart(part)
 
     @staticmethod
     def tryOpenModelMaskEditor(event):
-        selection = soulsOutfitManager_global.getWidgets()['replace_part_list'].curselection()
-        partName = None
+        selection = soulsOutfitManager_global.getWidgets()['replaced_part_list'].curselection()
+        part = None
         
         if len(selection) == 1:
-            partName = soulsOutfitManager_global.getWidgets()['replace_part_list'].get(selection[0], None)
+            part = soulsOutfitManager_global.getWidgets()['replaced_part_list'].getDS3PartInfo(selection[0])
 
-        if partName != None:
-
-
-    @staticmethod
-    def replacedPartDoubleClickEvent(event):
-        soulsOutfitManager_global.__tryRestorePart()
+        if part != None:
+            soulsOutfitManager_global.__tryLoadModelMaskPreset(part)
 
     @staticmethod
-    def openBrowseMenu():
+    def tryUpdateModelMaskPreset():
+        selection = soulsOutfitManager_global.getWidgets()['replaced_part_list'].curselection()
+        part = None
+        
+        if len(selection) == 1:
+            part = soulsOutfitManager_global.getWidgets()['replaced_part_list'].getDS3PartInfo(selection[0])
+
+        if part != None:
+            soulsOutfitManager_global.__saveModelMaskPreset(
+                part,
+                soulsOutfitManager_global.getWidgets()['model_mask_editor'].getItemCheckStates())
+            soulsOutfitManager_global.__applyModelMaskPresets()
+
+    @staticmethod
+    def tryRestorePart(event):
+        selection = soulsOutfitManager_global.getWidgets()['replaced_part_list'].curselection()
+        part = None
+        
+        if len(selection) == 1:
+            part = soulsOutfitManager_global.getWidgets()['replaced_part_list'].getDS3PartInfo(selection[0])
+
+        if part != None:
+            result = messagebox.askokcancel('Restore this backup?',
+                'Are you sure you want to restore this part to it\'s original?'
+                + '\nAny file currently replacing it will be deleted.')
+            
+            if result:
+                soulsOutfitManager_global.__restoreReplacedPart(part)
+
+    @staticmethod
+    def openBrowseForGameDirectory():
         directory = filedialog.askdirectory(mustexist=True)
 
         if any(os.path.isfile(directory + os.path.sep + EXEName) for EXEName in SoulsOutfitManager.supportedGameEXENames):
@@ -844,8 +646,8 @@ class SoulsOutfitManager:
             currentText = soulsOutfitManager_global.getWidgets()['game_dir_entry'].get()
             soulsOutfitManager_global.getWidgets()['game_dir_entry'].delete(0, len(currentText))
             soulsOutfitManager_global.getWidgets()['game_dir_entry'].insert(0, directory)
-            soulsOutfitManager_global.__updateModdedPartList()
-            soulsOutfitManager_global.__updateGamePartList()
+            soulsOutfitManager_global.__updateUIModdedPartList()
+            soulsOutfitManager_global.__updateUIGamePartList()
         elif len(directory) != 0:
             messagebox.showerror('Invalid Directory Given',
                 'Could not find a valid EXE in the specified directory.'
@@ -854,9 +656,9 @@ class SoulsOutfitManager:
     @staticmethod
     def refresh(event):
         soulsOutfitManager_global.__loadPartLists()
-        soulsOutfitManager_global.__updateModdedPartList()
-        soulsOutfitManager_global.__updateGamePartList()
-        soulsOutfitManager_global.__updateReplacedPartList()
+        soulsOutfitManager_global.__updateUIModdedPartList()
+        soulsOutfitManager_global.__updateUIGamePartList()
+        soulsOutfitManager_global.__updateUIReplacedPartList()
         modelMaskPatcher.attach()
         
         if modelMaskPatcher.isAttached():
@@ -864,17 +666,17 @@ class SoulsOutfitManager:
 
     @staticmethod
     def moddedPartsSearchUpdate(event):
-        soulsOutfitManager_global.__updateModdedPartList()
+        soulsOutfitManager_global.__updateUIModdedPartList()
 
     @staticmethod
     def gamePartsSearchUpdate(event):
-        soulsOutfitManager_global.__updateGamePartList()
+        soulsOutfitManager_global.__updateUIGamePartList()
 
     @staticmethod
     def replacedPartsSearchUpdate(event):
-        soulsOutfitManager_global.__updateReplacedPartList()
+        soulsOutfitManager_global.__updateUIReplacedPartList()
 
-global soulsOutfitManager_Global
+global soulsOutfitManager_global
 global modelMaskPatcher
 soulsOutfitManager_global = SoulsOutfitManager()
 modelMaskPatcher = DS3ModelMaskPatcher()
