@@ -5,7 +5,7 @@ It will allow you to easily manage replacements, and revert those changes withou
 There will also be a feature to change the model masks of armor pieces while the game is running, and save the preferences to a file.
  
 ## Support
-Currently, it only supports DARK SOULS III, and will be intended to be used with [UXM](https://www.nexusmods.com/sekiro/mods/26)!, and later Mod Engine and ModEngine2. Support for other games such as DARK SOULS: REMASTERED may be considered after.
+Currently, it only supports DARK SOULS III, and will be intended to be used with [UXM](https://www.nexusmods.com/sekiro/mods/26), and later Mod Engine and ModEngine2. Support for other games such as DARK SOULS: REMASTERED may be considered after.
 
 ## How to use
 
