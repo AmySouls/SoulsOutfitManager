@@ -3,3 +3,10 @@
 mods/
 __pycache__/
 releases/
+SoulsOutfitManager_Data.json
+env/
+dist/
+build.bat
+SoulsOufitManager.spec
+filename.spec
+SoulsOutfitManager_Data.json

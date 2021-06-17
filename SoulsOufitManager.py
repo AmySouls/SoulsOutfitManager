@@ -676,7 +676,9 @@ class SoulsOutfitManager:
             currentText = soulsOutfitManager_global.getWidgets()['game_dir_entry'].get()
             soulsOutfitManager_global.getWidgets()['game_dir_entry'].delete(0, len(currentText))
             soulsOutfitManager_global.getWidgets()['game_dir_entry'].insert(0, directory)
+            soulsOutfitManager_global.__loadPartLists()
             soulsOutfitManager_global.__updateUIModdedPartList()
+            soulsOutfitManager_global.__updateUIReplacedPartList()
             soulsOutfitManager_global.__updateUIGamePartList()
         elif len(directory) != 0:
             messagebox.showerror('Invalid Directory Given',
