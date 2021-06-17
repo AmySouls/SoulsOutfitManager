@@ -104,7 +104,7 @@ class DS3ModelMaskPatcher:
 
     def isAttached(self):
         try:
-            self.__pyMem.base_address()
+            self.__pyMem.read_int(0x140000000)
             return True
         except pymem.exception.ProcessError as error:
             return False

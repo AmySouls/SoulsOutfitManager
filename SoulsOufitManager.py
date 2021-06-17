@@ -37,6 +37,7 @@ class SoulsOutfitManager:
         self.__replacedParts = {}
         self.__widgets = {}
         self.__selectedModdedPart = None
+        self.__modelMaskPresets = {}
 
     def __getSelectedModdedPart(self):
         return self.__selectedModdedPart
@@ -53,7 +54,7 @@ class SoulsOutfitManager:
     def __initUI(self):
         self.__window = tk.Tk()
         self.__window.configure(bg='#1e1e1e')
-        self.__window.geometry('1200x550')
+        self.__window.geometry('1300x550')
         self.__window.title('SoulsOutfitManager')
         self.__window.iconbitmap('assets' + os.path.sep + 'smouldering-gs.ico')
         self.gameDirVariable = tk.StringVar()
@@ -210,15 +211,29 @@ class SoulsOutfitManager:
             self.__window,
             bg='#333333',
             fg='#c3c3c3',
-            text='Refresh',
-            width=6,
+            text='Refresh Files',
+            width=14,
             height=1,
-            relief=tk.RAISED)
-        self.__widgets['refresh_button'].bind('<Button-1>',
-            SoulsOutfitManager.refresh)
+            relief=tk.RAISED,
+            command=SoulsOutfitManager.refresh)
         self.__widgets['refresh_button'].grid(
+            row=0, 
+            column=4,
+            padx=5,
+            pady=5,
+            sticky='W')
+        self.__widgets['model_mask_save_button'] = tk.Button(
+            self.__window,
+            bg='#333333',
+            fg='#c3c3c3',
+            text='Save & Update\nModel Mask Changes',
+            width=16,
+            height=2,
+            relief=tk.RAISED,
+            command=SoulsOutfitManager.saveModelMaskChanges)
+        self.__widgets['model_mask_save_button'].grid(
             row=1, 
-            column=3,
+            column=4,
             padx=5,
             pady=5,
             sticky='W')
@@ -280,7 +295,12 @@ class SoulsOutfitManager:
                 elif os.path.splitext(entry.name)[1] == '.dcx':
                     self.__gameParts.append(DS3PartInfo(self.__ds3PartUtil, partsDir, entry.name))
                 elif os.path.splitext(entry.name)[1] == '.sombak':
-                    self.__replacedParts.append(DS3PartInfo(self.__ds3PartUtil, partsDir, entry.name))
+                    part = DS3PartInfo(self.__ds3PartUtil, partsDir, entry.name)
+                    self.__replacedParts.append(part)
+                    self.__loadModelMaskPresetFile(part)
+
+                    if part.getPartFile() in self.__modelMaskPresets:
+                        self.__applyModelMaskPresetToGame(part, self.__modelMaskPresets[part.getPartFile()])
 
         if os.path.isdir(SoulsOutfitManager.modsDirectory):
             for entry in os.scandir(SoulsOutfitManager.modsDirectory):
@@ -307,7 +327,7 @@ class SoulsOutfitManager:
             replacedPartFiles.append(replacedPart.getPartFile())
 
         for gamePart in self.__gameParts:
-            if gamePart.getPartFile() in replacedPartFiles:
+            if gamePart.getPartFile() + '.sombak' in replacedPartFiles:
                 continue
 
             partName = gamePart.getPartName()
@@ -364,8 +384,8 @@ class SoulsOutfitManager:
             
         self.__loadPartLists()
         self.__updateUIModdedPartList()
-        self.__updateUIGamePartList()
         self.__updateUIReplacedPartList()
+        self.__updateUIGamePartList()
 
     def __deleteGamePart(self, gamePart):
         gameDirectory = soulsOutfitManager_global.__widgets['game_dir_entry'].get()
@@ -391,8 +411,8 @@ class SoulsOutfitManager:
 
         self.__loadPartLists()
         self.__updateUIModdedPartList()
-        self.__updateUIGamePartList()
         self.__updateUIReplacedPartList()
+        self.__updateUIGamePartList()
 
     def __restoreReplacedPart(self, replacedPart):
         gameDirectory = soulsOutfitManager_global.__widgets['game_dir_entry'].get()
@@ -422,41 +442,33 @@ class SoulsOutfitManager:
 
         self.__loadPartLists()
         self.__updateUIModdedPartList()
-        self.__updateUIGamePartList()
         self.__updateUIReplacedPartList()
+        self.__updateUIGamePartList()
+    
+    def __applyModelMaskPresetToGame(self, part, preset):
+        presetFile = os.path.splitext(self.__getModelMaskPresetFile(part))[0]
 
-    def __applyModelMaskPresets(self):
-        if not os.path.isdir(SoulsOutfitManager.modsDirectory):
+        if not presetFile.endswith('.modelmaskpreset'):
+            return
+            
+        split = presetFile.split('.')
+
+        if not len(split) == 2:
             return
 
-        for entry in os.scandir(SoulsOutfitManager.modsDirectory):
-            if not entry.is_file() or len(os.path.splitext(entry.name)) != 2 or not os.path.splitext(entry.name)[1] == '.json':
-                continue
-
-            fileBaseName = os.path.splitext(entry.name)[0]
-
-            if not fileBaseName.endswith('.modelmaskpreset'):
-                continue
+        equipInfoSplit = split[0].split('_')
             
-            split = fileBaseName.split('.')
+        if not len(equipInfoSplit) == 2:
+            return
 
-            if not len(split) == 2:
-                continue
+        bodyPart = equipInfoSplit[0]
+        modelId = int(equipInfoSplit[1])
 
-            equipInfoSplit = split[0].split('_')
-            
-            if not len(equipInfoSplit) == 2:
-                continue
-
-            bodyPart = equipInfoSplit[0]
-            modelId = int(equipInfoSplit[1])
-            preset = json.load(open(SoulsOutfitManager.modsDirectory + os.path.sep + entry.name))
-
-            for offset in preset:
-                paramId = modelMaskPatcher.getParamIdByEquipModelIdAndEquipModelCategory(modelId, bodyPart)
-                modelMaskPatcher.writeModelMask(paramId, int(offset), int(preset[offset]['hidden']))
+        for offset in preset:
+            paramId = modelMaskPatcher.getParamIdByEquipModelIdAndEquipModelCategory(modelId, bodyPart)
+            modelMaskPatcher.writeModelMask(paramId, int(offset), int(preset[offset]['hidden']))
     
-    def __createModelMaskPreset(self, part):
+    def __createModelMaskPresetFile(self, part):
         if not os.path.isdir(SoulsOutfitManager.modsDirectory):
             return
 
@@ -468,7 +480,9 @@ class SoulsOutfitManager:
             maskElement = { 'description' : '', 'hidden' : False }
             
             if str(i) in template:
-                maskElement['description'] = template[str(i)]['description']
+                maskElement['description'] = 'Hide ' + template[str(i)]['description']
+            else:
+                maskElement['description'] = 'Hide ' + str(i)
 
             maskElement['hidden'] = modelMaskPatcher.readModelMask(paramId, i)
             preset[str(i)] = maskElement
@@ -476,53 +490,55 @@ class SoulsOutfitManager:
         with open(SoulsOutfitManager.modsDirectory + os.path.sep + self.__getModelMaskPresetFile(part), 'w') as file:
             json.dump(preset, file, ensure_ascii=False, indent=2)
 
-    def __saveModelMaskPreset(self, part, items):
+    def __saveModelMaskPreset(self, part):
         if not os.path.isdir(SoulsOutfitManager.modsDirectory):
             return
 
         template = json.load(open(SoulsOutfitManager.assetsDirectory + os.path.sep + 'template.modelmaskpreset.json'))
         preset = {}
         paramId = modelMaskPatcher.getParamIdByEquipModelIdAndEquipModelCategory(part.getEquipModelId(), part.getEquipModelCategory())
+        presetFile = self.__getModelMaskPresetFile(part)
+
+        with open(SoulsOutfitManager.modsDirectory + os.path.sep + presetFile, 'w') as file:
+            json.dump(self.__modelMaskPresets[part.getPartFile()], file, ensure_ascii=False, indent=2)
         
+    def __registerModelMaskPresetEdit(self, part, items):
         for i in range(97):
-            maskElement = { 'description' : '', 'hidden' : False }
-            
-            if str(i) in template:
-                maskElement['description'] = template[str(i)]['description']
-
             if int(items[i]) == 1:
-                maskElement['hidden'] = True
+                self.__modelMaskPresets[part.getPartFile()][str(i)]['hidden'] = True
             else:
-                maskElement['hidden'] = False
+                self.__modelMaskPresets[part.getPartFile()][str(i)]['hidden'] = False
+    
+    def __loadModelMaskPresetFile(self, part):
+        presetPath = SoulsOutfitManager.modsDirectory + os.path.sep + self.__getModelMaskPresetFile(part)
 
-            preset[str(i)] = maskElement
-
-        with open(SoulsOutfitManager.modsDirectory + os.path.sep + self.__getModelMaskPresetFile(part), 'w') as file:
-            json.dump(preset, file, ensure_ascii=False, indent=2)
-
-    def __loadModelMaskPreset(self, part):
-        presetFile = SoulsOutfitManager.modsDirectory + os.path.sep + self.__getModelMaskPresetFile(part)
-
-        if not os.path.isfile(presetFile):
+        if not os.path.isfile(presetPath):
             return
         
-        preset = json.load(open(presetFile))
-        
-        for i in preset:
-            if preset[str(i)]['description'] == '':
-                preset[str(i)]['description'] = str(i)
+        preset = json.load(open(presetPath))
+        self.__modelMaskPresets[part.getPartFile()] = preset
 
-            preset[str(i)]['description'] = 'Hide ' + preset[str(i)]['description']
-
+    def __loadPresetIntoModelMaksEditorUI(self, preset):
         self.__widgets['model_mask_editor'].setItems(preset, SoulsOutfitManager.tryUpdateModelMaskPreset)
-
-    def __tryLoadModelMaskPreset(self, part):
-        if os.path.isfile(SoulsOutfitManager.modsDirectory 
+    
+    def __emptyModelMasksEditorUI(self):
+        self.__widgets['model_mask_editor'].setItems({}, SoulsOutfitManager.tryUpdateModelMaskPreset)
+    
+    def __tryLoadModelMaskPresetIntoEditor(self, part):
+        equipModelCategory = part.getEquipModelCategory()
+        if equipModelCategory == EquipModelCategory.WEAPON.value:
+            self.__emptyModelMasksEditorUI()
+            return
+        
+        if not os.path.isfile(SoulsOutfitManager.modsDirectory 
                 + os.path.sep 
                 + self.__getModelMaskPresetFile(part)):
-            self.__loadModelMaskPreset(part)
-        else:
-            self.__createModelMaskPreset(part)
+            self.__createModelMaskPresetFile(part)    
+            self.__loadModelMaskPresetFile(part)
+            
+        if part.getPartFile() in self.__modelMaskPresets:
+            preset = self.__modelMaskPresets[part.getPartFile()]
+            self.__loadPresetIntoModelMaksEditorUI(preset)
 
     def start(self):
         self.__loadDS3PartUtil()
@@ -535,8 +551,8 @@ class SoulsOutfitManager:
             self.__widgets['game_dir_entry'].insert(0, programDataFile['gameDirectory'])
         self.__loadPartLists()
         self.__updateUIModdedPartList()
-        self.__updateUIGamePartList()
         self.__updateUIReplacedPartList()
+        self.__updateUIGamePartList()
         self.__window.mainloop()
 
     def getWidgets(self):
@@ -603,7 +619,7 @@ class SoulsOutfitManager:
             part = soulsOutfitManager_global.getWidgets()['replaced_part_list'].getDS3PartInfo(selection[0])
 
         if part != None:
-            soulsOutfitManager_global.__tryLoadModelMaskPreset(part)
+            soulsOutfitManager_global.__tryLoadModelMaskPresetIntoEditor(part)
 
     @staticmethod
     def tryUpdateModelMaskPreset():
@@ -614,11 +630,25 @@ class SoulsOutfitManager:
             part = soulsOutfitManager_global.getWidgets()['replaced_part_list'].getDS3PartInfo(selection[0])
 
         if part != None:
-            soulsOutfitManager_global.__saveModelMaskPreset(
+            soulsOutfitManager_global.__registerModelMaskPresetEdit(
                 part,
                 soulsOutfitManager_global.getWidgets()['model_mask_editor'].getItemCheckStates())
-            soulsOutfitManager_global.__applyModelMaskPresets()
+    
+    @staticmethod
+    def saveModelMaskChanges():
+        selection = soulsOutfitManager_global.getWidgets()['replaced_part_list'].curselection()
+        part = None
+        
+        if len(selection) == 1:
+            part = soulsOutfitManager_global.getWidgets()['replaced_part_list'].getDS3PartInfo(selection[0])
 
+        if part != None:
+            soulsOutfitManager_global.__saveModelMaskPreset(part)
+
+            if part.getPartFile() in soulsOutfitManager_global.__modelMaskPresets:
+                soulsOutfitManager_global.__applyModelMaskPresetToGame(part,
+                    soulsOutfitManager_global.__modelMaskPresets[part.getPartFile()])
+    
     @staticmethod
     def tryRestorePart(event):
         selection = soulsOutfitManager_global.getWidgets()['replaced_part_list'].curselection()
@@ -654,15 +684,12 @@ class SoulsOutfitManager:
                 + '\nYou should select the directory containing the game EXE eg. steamapps\common\DARK SOULS III\Game')
 
     @staticmethod
-    def refresh(event):
+    def refresh():
         soulsOutfitManager_global.__loadPartLists()
         soulsOutfitManager_global.__updateUIModdedPartList()
-        soulsOutfitManager_global.__updateUIGamePartList()
         soulsOutfitManager_global.__updateUIReplacedPartList()
+        soulsOutfitManager_global.__updateUIGamePartList()
         modelMaskPatcher.attach()
-        
-        if modelMaskPatcher.isAttached():
-            soulsOutfitManager_global.__applyModelMaskPresets()
 
     @staticmethod
     def moddedPartsSearchUpdate(event):

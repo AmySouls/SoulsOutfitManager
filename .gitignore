@@ -1,2 +1,5 @@
 
 *.dcx
+mods/
+__pycache__/
+releases/

@@ -7,6 +7,7 @@ class EquipModelCategory(Enum):
     BODY = 'bd'
     ARMS = 'am'
     LEGS = 'lg'
+    WEAPON = 'wp'
 
 class EquipModelGender(Enum):
     MALE = 'm'
