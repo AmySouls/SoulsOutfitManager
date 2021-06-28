@@ -1,2 +1,0 @@
-python SoulsOufitManager.py
-pause
