@@ -7,6 +7,8 @@ There will also be a feature to change the model masks of armor pieces while the
 ## Support
 Currently, it only supports DARK SOULS III, and will be intended to be used with [UXM](https://www.nexusmods.com/sekiro/mods/26), and later Mod Engine and ModEngine2. Support for other games such as DARK SOULS: REMASTERED may be considered after.
 
+As for operating systems, it only supports Microsoft Windows as DARK SOULS III can only run on it.
+
 ## How to use
 
 ### Getting Started
