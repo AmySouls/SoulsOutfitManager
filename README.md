@@ -35,12 +35,11 @@ edit the model masks of currently replaced parts.
 
 1: Select the part you wish to edit the model masks under "Installed Modded Parts"
 2: Check on or off model masks under "Edit Model Masks".
-3: Click "Save & Update Model Mask Changes" to confirm your changes.
-4: Open DS3 or if you have DS3 already open, reequip the armor you edited the masks of.
+3: Open DS3 or if you have DS3 already open, reequip the armor you edited the masks of.
+4(Optional): Click "Save Model Mask Changes" to save your changes to a preset file that will be opened and applied on launch(They are saved to the same folder you put your mods in).
 
-As long as a part is replaced under "Installed Modded Parts", the model mask changes will apply when you click
-save & update model mask changes while the game is running or when you launch the program while the game is running.
-To restore the original model masks of an armor piece, either restore the part or delete the ```.modelmaskpreset.json``` file in the mods folder.
+As long as a part is replaced under "Installed Modded Parts", the model mask changes will apply while the game is running.
+To restore the original model masks of an armor piece, either restore the part or delete the ```.modelmaskpreset.json``` file in the mods folder, then restart the game.
 
 ### Updating manual changes
 Incase you went ahead yourself and manaully messed with the game part files, click refresh to update those changes.
