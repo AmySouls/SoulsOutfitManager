@@ -103,11 +103,25 @@ class DS3ModelMaskPatcher:
             return
 
     def isAttached(self):
+        result = None
+
         try:
-            self.__pyMem.read_int(0x140000000)
-            return True
+            result = self.__accessMultilevelPointer('uint64',
+                [0x144782838])
         except pymem.exception.ProcessError as error:
             return False
+        
+        if result != None:
+            return True
+        else:
+            return False
+    
+    def isParamsDefined(self):
+        return self.__paramOffset != None
+
+    def undefineParams(self):
+        self.__paramOffset = None
+        self.__paramTable = {}
 
     def attach(self):
         try:
@@ -116,5 +130,17 @@ class DS3ModelMaskPatcher:
             return
         except pymem.exception.CouldNotOpenProcess as error:
             return
+        
+        if not self.isAttached():
+            return
 
-        self.__loadEquipParamProtector()
+        try:
+            self.__loadEquipParamProtector()
+            return
+        except TypeError as error:
+            self.undefineParams()
+            return
+        except pymem.exception.ProcessNotFound as error:
+            return
+        except pymem.exception.MemoryReadError as error:
+            return
