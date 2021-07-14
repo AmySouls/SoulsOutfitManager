@@ -58,7 +58,7 @@ class SoulsOutfitManager:
         self.__window.configure(bg='#1e1e1e')
         self.__window.geometry('1300x550')
         self.__window.title('SoulsOutfitManager')
-        self.__window.iconbitmap('assets' + os.path.sep + 'smouldering-gs.ico')
+        self.__window.iconbitmap('assets' + os.path.sep + 'gundyr_chest.ico')
         self.gameDirVariable = tk.StringVar()
         self.__widgets['game_dir_browse_button'] = tk.Button(
             self.__window,

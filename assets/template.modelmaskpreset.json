@@ -7,14 +7,6 @@
         "description": "Lower face",
         "hidden": false
       },
-      "2": {
-        "description": "",
-        "hidden": false
-      },
-      "3": {
-        "description": "",
-        "hidden": false
-      },
       "4": {
         "description": "Upper neck",
         "hidden": false
@@ -47,10 +39,6 @@
         "description": "Hands",
         "hidden": false
       },
-      "12": {
-        "description": "",
-        "hidden": false
-      },
       "13": {
         "description": "Waist",
         "hidden": false
@@ -79,88 +67,52 @@
         "description": "Belt",
         "hidden": false
       },
-      "20": {
-        "description": "",
-        "hidden": false
-      },
-      "21": {
-        "description": "",
-        "hidden": false
-      },
-      "22": {
-        "description": "",
-        "hidden": false
-      },
-      "23": {
-        "description": "",
-        "hidden": false
-      },
-      "24": {
-        "description": "",
-        "hidden": false
-      },
       "25": {
         "description": "Sleeves",
         "hidden": false
       },
-      "26": {
-        "description": "",
+      "50": {
+        "description": "Part of pants",
         "hidden": false
       },
-      "27": {
-        "description": "",
+      "57": {
+        "description": "Hide skirt/loincloth?",
         "hidden": false
       },
-      "28": {
-        "description": "",
+      "58": {
+        "description": "Hide skirt/loincloth?",
         "hidden": false
       },
-      "29": {
-        "description": "",
+      "60": {
+        "description": "Hair scalp",
         "hidden": false
       },
-      "30": {
-        "description": "",
+      "61": {
+        "description": "Hair low",
         "hidden": false
       },
-      "31": {
-        "description": "",
+      "63": {
+        "description": "Hair top in",
         "hidden": false
       },
-      "32": {
-        "description": "",
+      "64": {
+        "description": "Hair top out",
         "hidden": false
       },
-      "33": {
-        "description": "",
+      "65": {
+        "description": "Hair front in",
         "hidden": false
       },
-      "34": {
-        "description": "",
+      "66": {
+        "description": "Hair front out",
         "hidden": false
       },
-      "35": {
-        "description": "",
+      "67": {
+        "description": "Hair sides",
         "hidden": false
       },
-      "36": {
-        "description": "",
-        "hidden": false
-      },
-      "37": {
-        "description": "",
-        "hidden": false
-      },
-      "38": {
-        "description": "",
-        "hidden": false
-      },
-      "39": {
-        "description": "",
-        "hidden": false
-      },
-      "40": {
-        "description": "",
+      "68": {
+        "description": "Hair back",
         "hidden": false
       }
     }
