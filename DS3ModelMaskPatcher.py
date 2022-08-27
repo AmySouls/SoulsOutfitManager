@@ -5,7 +5,7 @@ class DS3ModelMaskPatcher:
     """Patches Params in DARK SOULS III's memory for part model masks"""
 
     def __init__(self):
-        self.__pyMem = pymem.Pymem()
+        self.__pyMem = pymem.Pymem('DarkSoulsIII.exe')
         self.__paramOffset = None
         self.__paramTable = {}
 
@@ -56,7 +56,7 @@ class DS3ModelMaskPatcher:
 
     def __loadEquipParamProtector(self):
         self.__paramOffset = self.__accessMultilevelPointer('uint64',
-            [0x144782838, 0xB8, 0x68, 0x68])
+            [self.__pyMem.base_address + 0x4798118, 0xB8, 0x68, 0x68])
         tableSize = self.__accessMultilevelPointer('int16',
             [self.__paramOffset + 0xA])
 
@@ -107,7 +107,7 @@ class DS3ModelMaskPatcher:
 
         try:
             result = self.__accessMultilevelPointer('uint64',
-                [0x144782838])
+                [self.__pyMem.base_address + 0x4798118])
         except pymem.exception.ProcessError as error:
             return False
         
