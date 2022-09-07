@@ -5,7 +5,7 @@ class DS3ModelMaskPatcher:
     """Patches Params in DARK SOULS III's memory for part model masks"""
 
     def __init__(self):
-        self.__pyMem = pymem.Pymem('DarkSoulsIII.exe')
+        self.__pyMem = pymem.Pymem()
         self.__paramOffset = None
         self.__paramTable = {}
 
@@ -103,6 +103,9 @@ class DS3ModelMaskPatcher:
             return
 
     def isAttached(self):
+        if not self.__pyMem.process_id:
+            return False
+
         result = None
 
         try:
